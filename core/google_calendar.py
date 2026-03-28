@@ -6,7 +6,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+SCOPES = ['https://www.googleapis.com/auth/calendar']
 TEXO_CALENDAR_ID = 'c3b53b35d280ce52410261d8d1d443c95955183833c771e6fcabe31d236a026a@group.calendar.google.com'
 
 import streamlit as st
