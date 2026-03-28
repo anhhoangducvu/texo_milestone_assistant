@@ -9,14 +9,25 @@ from googleapiclient.discovery import build
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.compose']
 
+import streamlit as st
+import json
+
 def get_credentials():
     """Lấy thông tin xác thực từ tệp local hoặc Streamlit secrets."""
     creds = None
     token_path = 'token_gmail.json'
     creds_path = 'credentials.json'
     
+    # 1. Thử lấy từ File Local
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        return creds
+
+    # 2. Thử lấy từ Streamlit Secrets
+    if "gmail_token" in st.secrets:
+        token_data = json.loads(st.secrets["gmail_token"])
+        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+        return creds
         
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:

@@ -9,16 +9,28 @@ from googleapiclient.discovery import build
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 TEXO_CALENDAR_ID = 'c3b53b35d280ce52410261d8d1d443c95955183833c771e6fcabe31d236a026a@group.calendar.google.com'
 
+import streamlit as st
+import json
+
 def get_credentials():
     """Lấy thông tin xác thực từ tệp local hoặc Streamlit secrets."""
     creds = None
-    # Thử lấy từ File Local (cho phát triển local)
     token_path = 'token_calendar.json'
     creds_path = 'credentials.json'
     
+    # THẾ TRẬN 1: Thử lấy từ File Local (cho phát triển local)
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-        
+        return creds
+
+    # THẾ TRẬN 2: Thử lấy từ Streamlit Secrets (cho chạy Online/GitHub)
+    # Cần cấu hình trong [secrets] với key "calendar_token"
+    if "calendar_token" in st.secrets:
+        token_data = json.loads(st.secrets["calendar_token"])
+        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+        return creds
+
+    # THẾ TRẬN 3: Nếu chưa có Token, yêu cầu xác thực mới (Local duy nhất)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -27,10 +39,9 @@ def get_credentials():
                 flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
                 creds = flow.run_local_server(port=0)
             else:
-                # Nếu không có file, có thể user đang chạy trên Streamlit Cloud
-                # Ở đây chúng ta sẽ báo lỗi để user cấu hình secrets sau
                 return None
         
+        # Lưu lại token sau khi xác thực thành công (chỉ ở Local)
         with open(token_path, 'w') as token:
             token.write(creds.to_json())
             
