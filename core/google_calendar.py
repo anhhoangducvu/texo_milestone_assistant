@@ -55,9 +55,12 @@ def get_today_events():
     
     service = build('calendar', 'v3', credentials=creds)
     
-    now = datetime.datetime.now()
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S+07:00")
-    end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999).strftime("%Y-%m-%dT%H:%M:%S+07:00")
+    # Sử dụng múi giờ Việt Nam (UTC+7) để đảm bảo đồng bộ khi chạy trên server (UTC)
+    vn_tz = datetime.timezone(datetime.timedelta(hours=7))
+    now = datetime.datetime.now(vn_tz)
+    
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999).isoformat()
     
     events_result = service.events().list(
         calendarId=TEXO_CALENDAR_ID, 
