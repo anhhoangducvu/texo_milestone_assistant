@@ -11,15 +11,50 @@ st.set_page_config(page_title="TEXO Milestone Assistant", page_icon="📧", layo
 # --- STYLE PREMIUM (Dark-Gold) ---
 st.markdown("""
 <style>
-    .stApp { background-color: #0A1931 !important; color: #ffffff !important; }
-    h1, h2, h3, h4, h5, h6, p, span, div, li, label, .stMarkdown { color: #ffffff !important; }
-    .main-header { color: #FFD700 !important; font-weight: 800; font-size: 32px; text-align: center; border-bottom: 2px solid #FFD700; padding-bottom: 10px; margin-bottom: 20px; }
-    .stButton>button { background: #152A4A !important; color: #FFD700 !important; border: 1px solid #FFD700 !important; border-radius: 12px; font-weight: bold; height: 3.5em; width: 100%; }
-    .stButton>button:hover { background: #FFD700 !important; color: #0A1931 !important; transform: scale(1.02); transition: 0.2s; }
-    .preview-box { background: rgba(25, 42, 74, 0.6); padding: 25px; border-radius: 12px; border: 1px solid rgba(255, 215, 0, 0.3); }
+    /* --- TỐI ƯU HÓA CSS CHO CẢ 2 CHẾ ĐỘ --- */
+    h1, h2, h3, h4, .main-header { color: #FFD700 !important; }
+    
+    .main-header { 
+        font-weight: 800; 
+        font-size: 32px; 
+        text-align: center; 
+        border-bottom: 2px solid #FFD700; 
+        padding-bottom: 10px; 
+        margin-bottom: 20px; 
+    }
+    
+    .stButton>button { 
+        background: linear-gradient(135deg, #152A4A 0%, #1e3a8a 100%) !important; 
+        color: #FFD700 !important; 
+        border: 1px solid #FFD700 !important; 
+        border-radius: 12px; 
+        font-weight: bold; 
+        height: 3.5em; 
+        width: 100%; 
+    }
+    .stButton>button:hover { 
+        background: #FFD700 !important; 
+        color: #0A1931 !important; 
+        transform: scale(1.02); 
+        transition: 0.2s; 
+    }
+    
+    .preview-box { 
+        background: var(--secondary-background-color); 
+        padding: 25px; 
+        border-radius: 12px; 
+        border: 1px solid rgba(255, 215, 0, 0.3); 
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+    
     .sidebar-header { color: #FFD700 !important; font-size: 20px; font-weight: bold; margin-bottom: 15px; }
-    .footer { text-align: center; color: #888; font-size: 12px; margin-top: 50px; }
-    .stTextInput>div>div>input, .stTextArea>div>div>textarea { background-color: #152A4A !important; color: white !important; border: 1px solid #333 !important; }
+    
+    /* Input field borders and background for visibility */
+    .stTextInput div[data-baseweb="input"], .stTextArea div[data-baseweb="textarea"], .stSelectbox div[data-baseweb="select"] {
+        border: 1px solid rgba(255, 215, 0, 0.2) !important;
+    }
+
+    .footer { text-align: center; color: #888; font-size: 12px; margin-top: 50px; border-top: 1px solid rgba(255, 215, 0, 0.1); padding-top: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
