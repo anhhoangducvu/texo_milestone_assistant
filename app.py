@@ -164,6 +164,6 @@ with col_main:
                         st.error(f"❌ Lỗi: {e}")
             st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.markdown("<div style='height: 400px; border: 2px dashed #333; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #666;'>Vui lòng chọn sự kiện có mã Milestone để bắt đầu soạn thảo</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center; color: #64748b; font-weight: 500; padding: 150px 20px;'>Hệ thống đang sẵn sàng... <br>Nhấn 'Quét lịch dự án' ở cột bên trái để AI bắt đầu soạn thảo.</div>", unsafe_allow_html=True)
 
 st.markdown("<div class='footer'>TEXO Engineering Department | Version 2.0 (Standalone) | Hoàng Đức Vũ</div>", unsafe_allow_html=True)
