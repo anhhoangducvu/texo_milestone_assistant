@@ -27,91 +27,84 @@ import json
 def get_credentials():
     """Lấy thông tin xác thực từ tệp local hoặc Streamlit secrets một cách thông minh."""
     creds = None
-    # Xác định đường dẫn tuyệt đối để tránh lỗi relative path
+    # Đường dẫn tệp
+    token_path = 'token_calendar.json'
+    creds_path = 'credentials.json'
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    token_path = os.path.join(base_dir, 'token_calendar.json')
-    creds_path = os.path.join(base_dir, 'credentials.json')
-    
-    # 🏟️ BƯỚC 1: Thử lấy từ File Local
-    if os.path.exists(token_path):
-        try:
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-        except Exception as e:
-            st.warning(f"⚠️ File token cũ bị hỏng, đang yêu cầu xác thực lại: {e}")
-            os.remove(token_path)
-            creds = None
 
-    # 🏜️ BƯỚC 2: Thử lấy từ Streamlit Secrets (Chỉ khi chạy online)
-    if not creds and os.environ.get("STREAMLIT_SHARING_AUTHOR"):
-        try:
-            if "calendar_token" in st.secrets:
-                token_data = json.loads(st.secrets["calendar_token"])
-                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-        except:
-            pass
-
-    # 🛡️ BƯỚC 3: KIỂM TRA HIỆU LỰC & LÀM MỚI (REFRESH)
-    if creds:
-        if creds.valid:
-            return creds
-        if creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                with open(token_path, 'w') as token:
-                    token.write(creds.to_json())
+    # 🏟️ BƯỚC 1: Thử lấy từ Streamlit Secrets (Ưu tiên nhất cho cả Local & Online)
+    try:
+        if "calendar_token" in st.secrets:
+            token_data = json.loads(st.secrets["calendar_token"])
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            if creds and creds.valid:
                 return creds
-            except Exception as e:
-                st.warning(f"🔄 Không thể làm mới chìa khóa cũ: {e}")
-                creds = None
+            if creds and creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    return creds
+                except: pass
+    except: pass
 
-    # 🔑 BƯỚC 4: XÁC THỰC THỦ CÔNG (Nếu các bước trên thất bại)
+    # 🏟️ BƯỚC 2: Thử lấy từ File Local (Quét cả root và cha)
+    paths_to_check = [token_path, os.path.join(base_dir, token_path)]
+    for p in paths_to_check:
+        if os.path.exists(p):
+            try:
+                creds = Credentials.from_authorized_user_file(p, SCOPES)
+                if creds and creds.valid: return creds
+                if creds and creds.expired and creds.refresh_token:
+                    try:
+                        creds.refresh(Request())
+                        with open(p, 'w') as f:
+                            f.write(creds.to_json())
+                        return creds
+                    except: pass
+            except: pass
+
+    # 🔑 BƯỚC 3: XÁC THỰC THỦ CÔNG (Nếu các bước trên thất bại)
     if not creds or not creds.valid:
-        if os.path.exists(creds_path):
-            # Dùng session_state để GIỮ FLOW (tránh mất state khi RERUN)
-            flow_key = f"flow_{os.path.basename(token_path)}"
+        # Tìm file credentials.json
+        c_paths = [creds_path, os.path.join(base_dir, creds_path)]
+        final_creds_path = next((cp for cp in c_paths if os.path.exists(cp)), None)
+        
+        if final_creds_path:
+            flow_key = f"flow_{token_path}"
             if flow_key not in st.session_state:
                 st.session_state[flow_key] = InstalledAppFlow.from_client_secrets_file(
-                    creds_path, 
-                    SCOPES, 
-                    redirect_uri='http://localhost'
+                    final_creds_path, SCOPES, redirect_uri='http://localhost'
                 )
-            
             flow = st.session_state[flow_key]
             auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
             
-            st.markdown(f"### 🔑 Cần cấp quyền truy cập Google Calendar")
-            st.info("⚠️ Chìa khóa cũ đã hết hạn hoặc chưa được cấp. Anh Vũ hãy làm theo các bước:")
+            st.markdown(f"### 🔑 Cần xác thực Google Calendar")
+            st.info("💡 Chìa khóa Secrets không khớp hoặc hết hạn. Anh Vũ hãy làm lại:")
             st.markdown(f"1. [👉 CLICK VÀO ĐÂY ĐỂ ĐĂNG NHẬP]({auth_url})")
-            st.markdown("2. Đăng nhập xong, Copy **TOÀN BỘ địa chỉ (URL)** trên trình duyệt dán vào ô dưới:")
+            st.markdown("2. Đăng nhập xong, Copy **URL** dán vào ô dưới:")
             
-            auth_response = st.text_input(f"Dán URL kết quả tại đây:", key=f"auth_resp_{flow_key}")
+            auth_response = st.text_input("Dán URL tại đây:", key=f"auth_resp_{flow_key}")
             if auth_response:
                 try:
-                    # Chuẩn hóa link
                     if "http://" in auth_response and "localhost" not in auth_response:
                         auth_response = auth_response.replace("http://", "https://")
-                    
                     flow.fetch_token(authorization_response=auth_response)
                     creds = flow.credentials
-                    with open(token_path, 'w') as token:
-                        token.write(creds.to_json())
-                    
-                    # Dọn dẹp session_state để không bị lặp
+                    # Lưu lại local để dùng lần sau
+                    with open(os.path.join(base_dir, token_path), 'w') as f:
+                        f.write(creds.to_json())
                     del st.session_state[flow_key]
-                    
-                    st.success("✅ Xác thực thành công! Anh hãy bấm Quét lịch dự án lần nữa nhé.")
-                    st.balloons()
-                    st.rerun() # Quan trọng: Rerun để load creds từ file vừa lưu
+                    st.success("✅ Xác thực thành công! Hệ thống đang tải lại...")
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Lỗi xác thực: {str(e)}")
-                    st.warning("⚠️ Có thể link này đã dùng rồi hoặc quá hạn. Hãy click lại link ở bước 1 để lấy link mới.")
+                    st.error(f"❌ Lỗi: {str(e)}")
                     del st.session_state[flow_key]
                     st.stop()
             else:
                 st.stop()
         else:
-            st.error(f"❌ Thiếu tệp cấu hình {creds_path}. Không thể cấp quyền.")
+            st.error(f"❌ Không thấy file credentials.json")
             return None
+    return creds
             
     return creds
 
