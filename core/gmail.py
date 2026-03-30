@@ -7,40 +7,95 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
 SCOPES = ['https://www.googleapis.com/auth/gmail.compose']
 
 import streamlit as st
 import json
 
 def get_credentials():
-    """Lấy thông tin xác thực từ tệp local hoặc Streamlit secrets."""
+    """Lấy thông tin xác thực từ tệp local hoặc Streamlit secrets một cách thông minh."""
     creds = None
-    token_path = 'token_gmail.json'
-    creds_path = 'credentials.json'
+    # Xác định đường dẫn tuyệt đối
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    token_path = os.path.join(base_dir, 'token_gmail.json')
+    creds_path = os.path.join(base_dir, 'credentials.json')
     
-    # 1. Thử lấy từ File Local
+    # 🏟️ BƯỚC 1: Thử lấy từ File Local
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-        return creds
+        try:
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        except Exception as e:
+            st.warning(f"⚠️ File token Gmail bị hỏng: {e}")
+            os.remove(token_path)
+            creds = None
 
-    # 2. Thử lấy từ Streamlit Secrets
-    if "gmail_token" in st.secrets:
-        token_data = json.loads(st.secrets["gmail_token"])
-        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-        return creds
-        
+    # 🏜️ BƯỚC 2: Thử lấy từ Streamlit Secrets
+    if not creds and os.environ.get("STREAMLIT_SHARING_AUTHOR"):
+        try:
+            if "gmail_token" in st.secrets:
+                token_data = json.loads(st.secrets["gmail_token"])
+                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+        except:
+            pass
+
+    # 🛡️ BƯỚC 3: KIỂM TRA HIỆU LỰC & LÀM MỚI (REFRESH)
+    if creds:
+        if creds.valid:
+            return creds
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                with open(token_path, 'w') as token:
+                    token.write(creds.to_json())
+                return creds
+            except Exception as e:
+                st.warning(f"🔄 Không thể làm mới token Gmail: {e}")
+                creds = None
+
+    # 🔑 BƯỚC 4: XÁC THỰC THỦ CÔNG
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if os.path.exists(creds_path):
-                flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
-                creds = flow.run_local_server(port=0)
+        if os.path.exists(creds_path):
+            flow_key = f"flow_{os.path.basename(token_path)}"
+            if flow_key not in st.session_state:
+                st.session_state[flow_key] = InstalledAppFlow.from_client_secrets_file(
+                    creds_path, 
+                    SCOPES, 
+                    redirect_uri='http://localhost'
+                )
+            
+            flow = st.session_state[flow_key]
+            auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+            
+            st.markdown(f"### 🔑 Cần cấp quyền truy cập Gmail")
+            st.info("💡 Vui lòng click vào link bên dưới để cấp quyền soạn thảo Gmail:")
+            st.markdown(f"1. [👉 CLICK VÀO ĐÂY ĐỂ ĐĂNG NHẬP GMAIL]({auth_url})")
+            st.markdown("2. Đăng nhập xong, Copy **TOÀN BỘ địa chỉ (URL)** dán vào ô dưới:")
+            
+            auth_response = st.text_input(f"Dán URL Gmail tại đây:", key=f"auth_resp_{flow_key}")
+            if auth_response:
+                try:
+                    if "http://" in auth_response and "localhost" not in auth_response:
+                        auth_response = auth_response.replace("http://", "https://")
+                    
+                    flow.fetch_token(authorization_response=auth_response)
+                    creds = flow.credentials
+                    with open(token_path, 'w') as token:
+                        token.write(creds.to_json())
+                    
+                    del st.session_state[flow_key]
+                    st.success("✅ Gmail đã sẵn sàng! Anh hãy tiếp tục nhé.")
+                    st.rerun() 
+                except Exception as e:
+                    st.error(f"❌ Lỗi xác thực Gmail: {str(e)}")
+                    del st.session_state[flow_key]
+                    st.stop()
             else:
-                return None
-        
-        with open(token_path, 'w') as token:
-            token.write(creds.to_json())
+                st.stop()
+        else:
+            st.error(f"❌ Thiếu tệp cấu hình {creds_path}.")
+            return None
             
     return creds
 

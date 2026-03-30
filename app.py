@@ -78,6 +78,20 @@ def check_password():
 
 if not check_password(): st.stop()
 
+# --- XÁC THỰC GOOGLE (TOP-LEVEL để tránh loop) ---
+with st.sidebar:
+    st.markdown("### 🔐 Hệ thống Xác thực")
+    with st.expander("Kiểm tra Google Calendar & Gmail", expanded=True):
+        try:
+            creds_cal = calendar.get_credentials()
+            if creds_cal: st.success("✅ Lịch: Đã sẵn sàng")
+            
+            creds_gmail = gmail.get_credentials()
+            if creds_gmail: st.success("✅ Gmail: Đã sẵn sàng")
+        except Exception as e:
+            st.error(f"⚠️ Cần xác thực: {e}")
+            st.stop()
+
 # --- GIAO DIỆN CHÍNH ---
 st.markdown("<div class='main-header'>📧 TEXO MILESTONE ASSISTANT</div>", unsafe_allow_html=True)
 
@@ -89,6 +103,7 @@ with col_ctrl:
     if st.button("🚀 QUÉT LỊCH DỰ ÁN HÔM NAY"):
         with st.spinner("Đang truy xuất Google Calendar..."):
             try:
+                # Lúc này get_credentials bên trong get_today_events sẽ lấy từ cache/file rất nhanh
                 events = calendar.get_today_events()
                 if not events:
                     st.warning("📅 Không tìm thấy sự kiện nào.")
