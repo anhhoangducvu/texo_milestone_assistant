@@ -36,6 +36,7 @@ def authenticate(scopes, token_name):
                                       success_message="Xác thực thành công! Bạn có thể quay lại terminal.")
         
         # Lưu chìa khóa ra file và sao chép tới các thư mục đích
+        token_json = creds.to_json()
         for target in TARGET_DIRS:
             if not os.path.exists(target):
                 # Thử tạo thư mục nếu chưa có
@@ -44,8 +45,18 @@ def authenticate(scopes, token_name):
             
             dest_path = os.path.join(target, token_name)
             with open(dest_path, 'w') as token:
-                token.write(creds.to_json())
+                token.write(token_json)
             print(f"✅ Đã lưu/cập nhật: {dest_path}")
+        
+        # --- KAIZEN: In ra chuỗi để dán vào Streamlit Secrets ---
+        secret_key = token_name.replace('.json', '')
+        print(f"\n🔑 CHÌA KHÓA CHO STREAMLIT SECRETS ({secret_key}):")
+        print("-" * 50)
+        # Ép chuỗi JSON về dạng một dòng để dễ copy
+        import json
+        clean_json = json.dumps(json.loads(token_json))
+        print(f'{secret_key} = \'{clean_json}\'')
+        print("-" * 50)
             
     except Exception as e:
         print(f"❌ Lỗi trong quá trình xác thực: {e}")
@@ -58,10 +69,28 @@ if __name__ == '__main__':
     print("Vui lòng đảm bảo các App Streamlit đang được TẮT để tránh xung đột.")
     
     try:
-        authenticate(CALENDAR_SCOPES, 'token_calendar.json')
-        authenticate(GMAIL_SCOPES, 'token_gmail.json')
-        print("\n🎉 CHÚC MỪNG ANH VŨ! Hệ thống đã được cấp 'bùa hộ mệnh' thành công.")
-        print("Tất cả App Streamlit và Lệnh /daily-email-check đã sẵn sàng hoạt động.")
+        # Xác thực từng cái và in ra secrets
+        authenticate(CALENDAR_SCOPES, 'calendar_token.json') # Đổi tên cho đồng bộ với code logic
+        authenticate(GMAIL_SCOPES, 'gmail_token.json')
+        
+        # --- KAIZEN: In thêm google_credentials ---
+        import json
+        with open(CREDS_FILE, 'r') as f:
+            creds_data = json.load(f)
+            creds_str = json.dumps(creds_data)
+        
+        print("\n" + "="*60)
+        print("🎉 CHÚC MỪNG ANH VŨ! Hệ thống đã được cấp 'bùa hộ mệnh' thành công.")
+        print("CÁC BƯỚC ĐỂ SIÊU BẢO MẬT & CHẠY ONLINE VĨNH VIỄN:")
+        print("1. Vào Settings -> Secrets trên Streamlit Cloud.")
+        print("2. Dán TOÀN BỘ các dòng dưới đây vào mục Secrets:")
+        print("-" * 50)
+        print(f"google_credentials = '{creds_str}'")
+        # Chờ authenticate in calendar_token và gmail_token ở trên rồi
+        print("-" * 50)
+        print("3. QUAN TRỌNG: Anh hãy xóa các file .json trong folder trước khi up")
+        print("   lên GitHub hoặc đảm bảo .gitignore đã chặn chúng để bảo mật nhé!")
+        print("="*60)
     except Exception as e:
         print(f"\n❌ Có lỗi hệ thống: {e}")
     
