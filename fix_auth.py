@@ -7,13 +7,15 @@ from google.oauth2.credentials import Credentials
 # 1. Cấu hình Scopes và đường dẫn
 CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar']
 GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.compose']
-CREDS_FILE = 'credentials.json'
+# Tự động lấy thư mục hiện tại của script để tìm file credentials.json
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CREDS_FILE = os.path.join(BASE_DIR, 'credentials.json')
 
 # Các điểm đến cần được cấp chìa khóa
 TARGET_DIRS = [
-    '.', # Thư mục hiện tại (Milestone App)
-    '../../.agent/skills/google-calendar-integrator',
-    '../../.agent/skills/gmail-integrator'
+    BASE_DIR, # Thư mục Milestone App
+    os.path.abspath(os.path.join(BASE_DIR, '../../.agent/skills/google-calendar-integrator')),
+    os.path.abspath(os.path.join(BASE_DIR, '../../.agent/skills/gmail-integrator'))
 ]
 
 # Để localhost chạy được http (fix lỗi insecure_transport)
