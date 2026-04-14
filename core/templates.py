@@ -4,7 +4,7 @@ MILESTONE_MAP = {
     "[M-W08]": 5, "[M-W10]": 6, "[M-W12]": 7, "[M-6M]": 8
 }
 
-CC_LIST = "trinhthangloi@texo.com.vn, nguyenquangvinh@texo.com.vn, leanhtra@texo.com.vn, tranvanlong@texo.com.vn, doquochuynh@texo.com.vn, phongkythuat@texo.com.vn, lephuongly@texo.com.vn, nguyenthuthuy@texo.com.vn, banthanhtra@texo.com.vn"
+CC_LIST = "trinhthangloi@texo.com.vn, nguyenquangvinh@texo.com.vn, leanhtra@texo.com.vn, tranvanlong@texo.com.vn, doquochuynh@texo.com.vn, phongkythuat@texo.com.vn, lephuongly@texo.com.vn, nguyenthuthuy@texo.com.vn, banthanhtra@texo.com.vn, techteam@texo.com.vn"
 
 TEMPLATES = {
     1: {

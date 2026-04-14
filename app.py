@@ -116,8 +116,9 @@ with col_ctrl:
                 st.info("💡 Lưu ý: Cần có file credentials.json hoặc cấu hình secrets để chạy online.")
 
     if "events" in st.session_state and st.session_state.events:
-        summaries = [e.get('summary', 'Sự kiện không tên') for e in st.session_state.events]
-        selected_event_summary = st.selectbox("Chọn sự kiện để xử lý:", summaries)
+        selected_event = st.selectbox("Chọn sự kiện để xử lý:", st.session_state.events, format_func=lambda x: x.get('summary', 'Sự kiện không tên'))
+        selected_event_summary = selected_event.get('summary', '')
+        selected_event_description = selected_event.get('description', '')
         
         # Phân tích sự kiện
         milestone_tag = next((tag for tag in MILESTONE_MAP if tag in selected_event_summary), None)
@@ -126,11 +127,41 @@ with col_ctrl:
             template_idx = MILESTONE_MAP[milestone_tag]
             tpl = TEMPLATES[template_idx]
             
-            # Bóc tách thông tin
-            contract_match = re.search(r"\[(.+?)\]", selected_event_summary)
-            contract_id = contract_match.group(1) if contract_match else "____"
-            project_parts = selected_event_summary.split("-")
-            project_name = project_parts[-1].strip() if len(project_parts) > 1 else selected_event_summary
+            # --- Ưu tiên bóc tách từ Ghi chú (Description) ---
+            contract_id = None
+            project_name = None
+            
+            if selected_event_description:
+                # Tìm Mã HĐ: 03-2026 (Cho phép dấu gạch ngang)
+                id_match = re.search(r"Mã HĐ:\s*([^\n\r]+)", selected_event_description, re.IGNORECASE)
+                if id_match:
+                    contract_id = id_match.group(1).strip()
+                    
+                # Tìm Tên viết ngắn hoặc Tên dự án
+                short_name_match = re.search(r"Tên viết ngắn:\s*([^\n\r]+)", selected_event_description, re.IGNORECASE)
+                project_match = re.search(r"Dự án:\s*([^\n\r]+)", selected_event_description, re.IGNORECASE)
+                
+                if short_name_match:
+                    project_name = short_name_match.group(1).strip()
+                elif project_match:
+                    project_name = project_match.group(1).strip()
+
+            # --- Fallback: Bóc tách từ Tiêu đề (Summary) ---
+            if not contract_id:
+                summary_parts = [p.strip() for p in selected_event_summary.split("-")]
+                if len(summary_parts) > 0 and summary_parts[0] != milestone_tag:
+                    contract_id = summary_parts[0]
+                else:
+                    contract_matches = re.findall(r"\[(.+?)\]", selected_event_summary)
+                    for m in contract_matches:
+                        if f"[{m}]" != milestone_tag:
+                            contract_id = m
+                            break
+                    if not contract_id: contract_id = "____"
+
+            if not project_name:
+                project_parts = selected_event_summary.split("-")
+                project_name = project_parts[-1].strip() if len(project_parts) > 1 else selected_event_summary
             
             center_name = "Trung tâm quản lý"
             recipient = "tt@texo.com.vn"
