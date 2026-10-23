@@ -1,215 +1,163 @@
-import streamlit as st
-import os
+# -*- coding: utf-8 -*-
+"""TEXO – Soạn email nhắc việc dự án theo lịch Google (Milestone Assistant).
+Đọc sự kiện hôm nay trên lịch TEXO → nhận diện mốc [M-W01]…[M-6M] → điền mẫu email → tạo bản nháp Gmail.
+Phòng Kỹ thuật – Công ty CP TEXO Tư vấn và Đầu tư.
+
+Chạy:  streamlit run app.py
+"""
 import re
+
+import streamlit as st
+
+from core import gmail, ui
 from core import google_calendar as calendar
-from core import gmail
-from core.templates import MILESTONE_MAP, TEMPLATES, CC_LIST
+from core.templates import CC_LIST, MILESTONE_MAP, TEMPLATES
 
-# --- CẤU HÌNH TRANG ---
-st.set_page_config(page_title="TEXO Milestone Assistant", page_icon="📧", layout="wide")
+APP_VERSION = "2.1"
+TITLE = "Soạn email nhắc việc theo lịch dự án"
+ui.setup("TEXO · " + TITLE, "📧")
+ui.gate("Soạn email nhắc việc dự án")
 
-# --- STYLE PREMIUM (Dark-Gold) ---
-st.markdown("""
-<style>
-    /* --- TỐI ƯU HÓA CSS CHO CẢ 2 CHẾ ĐỘ --- */
-    h1, h2, h3, h4, .main-header { color: #FFD700 !important; }
-    
-    .main-header { 
-        font-weight: 800; 
-        font-size: 32px; 
-        text-align: center; 
-        border-bottom: 2px solid #FFD700; 
-        padding-bottom: 10px; 
-        margin-bottom: 20px; 
-    }
-    
-    .stButton>button { 
-        background: linear-gradient(135deg, #152A4A 0%, #1e3a8a 100%) !important; 
-        color: #FFD700 !important; 
-        border: 1px solid #FFD700 !important; 
-        border-radius: 12px; 
-        font-weight: bold; 
-        height: 3.5em; 
-        width: 100%; 
-    }
-    .stButton>button:hover { 
-        background: #FFD700 !important; 
-        color: #0A1931 !important; 
-        transform: scale(1.02); 
-        transition: 0.2s; 
-    }
-    
-    .preview-box { 
-        background: var(--secondary-background-color); 
-        padding: 25px; 
-        border-radius: 12px; 
-        border: 1px solid rgba(255, 215, 0, 0.3); 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    }
-    
-    .sidebar-header { color: #FFD700 !important; font-size: 20px; font-weight: bold; margin-bottom: 15px; }
-    
-    /* Input field borders and background for visibility */
-    .stTextInput div[data-baseweb="input"], .stTextArea div[data-baseweb="textarea"], .stSelectbox div[data-baseweb="select"] {
-        border: 1px solid rgba(255, 215, 0, 0.2) !important;
-    }
 
-    .footer { text-align: center; color: #888; font-size: 12px; margin-top: 50px; border-top: 1px solid rgba(255, 215, 0, 0.1); padding-top: 20px; }
-</style>
-""", unsafe_allow_html=True)
+def find_tag(summary):
+    return next((tag for tag in MILESTONE_MAP if tag in (summary or "")), None)
 
-# --- XÁC THỰC ĐƠN GIẢN ---
-def check_password():
-    if "authenticated" not in st.session_state: st.session_state.authenticated = False
-    if st.session_state.authenticated: return True
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("<div style='text-align: center; padding: 40px;'>", unsafe_allow_html=True)
-        st.markdown("<h2 style='color: #FFD700;'>🏦 TEXO MILESTONE</h2>", unsafe_allow_html=True)
-        pwd = st.text_input("Mật khẩu dự án:", type="password")
-        if st.button("XÁC THỰC"):
-            if pwd == "texo2026":
-                st.session_state.authenticated = True
-                st.rerun()
-            else: st.error("❌ Truy cập không hợp lệ.")
-        st.markdown("</div>", unsafe_allow_html=True)
-    return False
 
-if not check_password(): st.stop()
+def build_draft(event, tag):
+    """Điền mẫu email theo mốc – ưu tiên thông tin trong ghi chú sự kiện, sau đó đến tiêu đề."""
+    summary = event.get("summary", "")
+    desc = event.get("description", "")
+    tpl = TEMPLATES[MILESTONE_MAP[tag]]
+    contract_id = project_name = None
+    if desc:
+        m = re.search(r"Mã HĐ:\s*([^\n\r]+)", desc, re.IGNORECASE)
+        if m:
+            contract_id = m.group(1).strip()
+        short = re.search(r"Tên viết ngắn:\s*([^\n\r]+)", desc, re.IGNORECASE)
+        proj = re.search(r"Dự án:\s*([^\n\r]+)", desc, re.IGNORECASE)
+        if short and short.group(1).strip():
+            project_name = short.group(1).strip()
+        elif proj:
+            project_name = proj.group(1).strip()
+    if not contract_id:
+        parts = [p.strip() for p in summary.split("-")]
+        if parts and parts[0] != tag:
+            contract_id = parts[0]
+        else:
+            for m in re.findall(r"\[(.+?)\]", summary):
+                if f"[{m}]" != tag:
+                    contract_id = m
+                    break
+            contract_id = contract_id or "____"
+    if not project_name:
+        parts = summary.split("-")
+        project_name = parts[-1].strip() if len(parts) > 1 else summary
 
-# --- XÁC THỰC GOOGLE (TOP-LEVEL để tránh loop) ---
+    center_name, recipient = "Trung tâm quản lý", "tt@texo.com.vn"
+    m = re.search(r"tt(\d+)", summary.lower())
+    if m:
+        recipient = f"tt{m.group(1)}@texo.com.vn"
+        center_name = f"Trung tâm {m.group(1)}"
+    subject = tpl["subject"].replace("[Mã HĐ]", contract_id).replace("[Tên dự án]", project_name)
+    body = (tpl["body"].replace("[Tên dự án]", project_name).replace("[Mã HĐ]", contract_id)
+            .replace("[Tên Trung tâm]", center_name))
+    return {"to": recipient, "subject": subject, "body": body, "tag": tag, "title": tpl.get("title", "")}
+
+
+# --------------------------------------------------------------------------- thanh bên
 with st.sidebar:
-    st.markdown("### 🔐 Hệ thống Xác thực")
-    with st.expander("Kiểm tra Google Calendar & Gmail", expanded=True):
-        try:
-            creds_cal = calendar.get_credentials()
-            if creds_cal: st.success("✅ Lịch: Đã sẵn sàng")
-            
-            creds_gmail = gmail.get_credentials()
-            if creds_gmail: st.success("✅ Gmail: Đã sẵn sàng")
-        except Exception as e:
-            st.error(f"⚠️ Cần xác thực: {e}")
-            st.stop()
+    st.markdown("### 🔗 Kết nối Google")
+    try:
+        creds_cal = calendar.get_credentials()
+        if creds_cal:
+            ui.badge("Google Calendar: đã kết nối", "green")
+        creds_gmail = gmail.get_credentials()
+        if creds_gmail:
+            ui.badge("Gmail: đã kết nối", "green")
+    except Exception as e:
+        st.error(f"⚠️ Cần xác thực: {e}")
+        st.stop()
+    st.caption("Đọc lịch tên **TEXO**; email chỉ tạo **bản nháp** trong Gmail, anh/chị tự xem lại rồi gửi.")
+    st.divider()
+    ui.logout_button()
+    st.caption(f"Soạn email nhắc việc v{APP_VERSION} · Xây dựng: Hoàng Đức Vũ")
 
-# --- GIAO DIỆN CHÍNH ---
-st.markdown("<div class='main-header'>📧 TEXO MILESTONE ASSISTANT</div>", unsafe_allow_html=True)
+# --------------------------------------------------------------------------- trang chính
+ui.header(TITLE, "Phòng Kỹ thuật · Quét mốc dự án hôm nay trên Google Calendar → soạn email theo mẫu TEXO → "
+                 "tạo bản nháp Gmail")
+
+with st.expander("📘 Hướng dẫn sử dụng"):
+    st.markdown("""
+1. Bấm **Quét lịch dự án hôm nay** – app đọc các sự kiện hôm nay trên lịch TEXO.
+2. Chọn sự kiện. Sự kiện có mã mốc `[M-W01]`, `[M-W02]`, `[M-W04]`, `[M-W06]`, `[M-W08]`, `[M-W10]`, `[M-W12]`, `[M-6M]`
+   (do app *Thiết lập lịch dự án* tạo) sẽ được điền sẵn mẫu email: Mã HĐ, tên dự án, Trung tâm.
+3. Sửa người nhận, tiêu đề, nội dung nếu cần → bấm **Tạo bản nháp trên Gmail**.
+4. Mở Gmail, xem lại bản nháp rồi gửi.
+""")
+
+events = st.session_state.get("events") or []
+draft = st.session_state.get("current_draft")
+kpi_box = st.container()
 
 col_ctrl, col_main = st.columns([1, 2], gap="large")
 
 with col_ctrl:
-    st.markdown("<div class='sidebar-header'>📅 Điều khiển & Dữ liệu</div>", unsafe_allow_html=True)
-    
-    if st.button("🚀 QUÉT LỊCH DỰ ÁN HÔM NAY"):
-        with st.spinner("Đang truy xuất Google Calendar..."):
+    st.markdown("##### 📅 Lịch dự án")
+    if st.button("🔄 Quét lịch dự án hôm nay", type="primary", use_container_width=True):
+        with st.spinner("Đang đọc Google Calendar…"):
             try:
-                # Lúc này get_credentials bên trong get_today_events sẽ lấy từ cache/file rất nhanh
-                events = calendar.get_today_events()
-                if not events:
-                    st.warning("📅 Không tìm thấy sự kiện nào.")
-                    st.session_state.events = []
-                else:
-                    st.session_state.events = events
-                    st.success(f"✅ Đã tìm thấy {len(events)} sự kiện.")
+                found = calendar.get_today_events() or []
+                st.session_state.events = found
+                st.session_state.current_draft = None
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Lỗi: {e}")
-                st.info("💡 Lưu ý: Cần có file credentials.json hoặc cấu hình secrets để chạy online.")
+                st.caption("Cần có credentials.json (chạy ở máy) hoặc cấu hình Secrets (chạy online).")
 
-    if "events" in st.session_state and st.session_state.events:
-        selected_event = st.selectbox("Chọn sự kiện để xử lý:", st.session_state.events, format_func=lambda x: x.get('summary', 'Sự kiện không tên'))
-        selected_event_summary = selected_event.get('summary', '')
-        selected_event_description = selected_event.get('description', '')
-        
-        # Phân tích sự kiện
-        milestone_tag = next((tag for tag in MILESTONE_MAP if tag in selected_event_summary), None)
-        
-        if milestone_tag:
-            template_idx = MILESTONE_MAP[milestone_tag]
-            tpl = TEMPLATES[template_idx]
-            
-            # --- Ưu tiên bóc tách từ Ghi chú (Description) ---
-            contract_id = None
-            project_name = None
-            
-            if selected_event_description:
-                # Tìm Mã HĐ: 03-2026 (Cho phép dấu gạch ngang)
-                id_match = re.search(r"Mã HĐ:\s*([^\n\r]+)", selected_event_description, re.IGNORECASE)
-                if id_match:
-                    contract_id = id_match.group(1).strip()
-                    
-                # Tìm Tên viết ngắn hoặc Tên dự án
-                short_name_match = re.search(r"Tên viết ngắn:\s*([^\n\r]+)", selected_event_description, re.IGNORECASE)
-                project_match = re.search(r"Dự án:\s*([^\n\r]+)", selected_event_description, re.IGNORECASE)
-                
-                if short_name_match:
-                    project_name = short_name_match.group(1).strip()
-                elif project_match:
-                    project_name = project_match.group(1).strip()
-
-            # --- Fallback: Bóc tách từ Tiêu đề (Summary) ---
-            if not contract_id:
-                summary_parts = [p.strip() for p in selected_event_summary.split("-")]
-                if len(summary_parts) > 0 and summary_parts[0] != milestone_tag:
-                    contract_id = summary_parts[0]
-                else:
-                    contract_matches = re.findall(r"\[(.+?)\]", selected_event_summary)
-                    for m in contract_matches:
-                        if f"[{m}]" != milestone_tag:
-                            contract_id = m
-                            break
-                    if not contract_id: contract_id = "____"
-
-            if not project_name:
-                project_parts = selected_event_summary.split("-")
-                project_name = project_parts[-1].strip() if len(project_parts) > 1 else selected_event_summary
-            
-            center_name = "Trung tâm quản lý"
-            recipient = "tt@texo.com.vn"
-            if "tt" in selected_event_summary.lower():
-                 m = re.search(r"tt(\d+)", selected_event_summary.lower())
-                 if m:
-                     recipient = f"tt{m.group(1)}@texo.com.vn"
-                     center_name = f"Trung tâm {m.group(1)}"
-            
-            # Điền dữ liệu vào template
-            final_subject = tpl['subject'].replace("[Mã HĐ]", contract_id).replace("[Tên dự án]", project_name)
-            final_body = tpl['body'].replace("[Tên dự án]", project_name).replace("[Mã HĐ]", contract_id).replace("[Tên Trung tâm]", center_name)
-            
-            st.session_state.current_draft = {"to": recipient, "subject": final_subject, "body": final_body}
-            st.success(f"📍 Milestone detected: {milestone_tag}")
+    if events:
+        selected = st.selectbox("Chọn sự kiện để soạn email", events,
+                                format_func=lambda x: ("📌 " if find_tag(x.get("summary", "")) else "· ")
+                                + x.get("summary", "Sự kiện không tên"))
+        tag = find_tag(selected.get("summary", ""))
+        if tag:
+            st.session_state.current_draft = build_draft(selected, tag)
+            ui.callout(f"🟢 Nhận diện mốc <b>{tag}</b> – {TEMPLATES[MILESTONE_MAP[tag]].get('title', '')}", "green")
         else:
-            st.warning("⏩ Sự kiện này không có mã Milestone hợp lệ.")
             st.session_state.current_draft = None
+            ui.callout("🟠 Sự kiện này không có mã mốc hợp lệ – không có mẫu email.", "orange")
+        draft = st.session_state.current_draft
+    elif "events" in st.session_state:
+        st.info("📅 Hôm nay không có sự kiện nào trên lịch TEXO.")
     else:
-        st.info("Nhấn 'Quét lịch dự án' để bắt đầu.")
+        st.info("Bấm **Quét lịch dự án hôm nay** để bắt đầu.")
 
 with col_main:
-    st.markdown("<div class='sidebar-header'>📝 Nội dung Preview & Soạn thảo</div>", unsafe_allow_html=True)
-    
-    if "current_draft" in st.session_state and st.session_state.current_draft:
-        draft = st.session_state.current_draft
-        
-        with st.container():
-            st.markdown("<div class='preview-box'>", unsafe_allow_html=True)
-            c1, c2 = st.columns([2, 1])
-            with c1: recipient_input = st.text_input("Người nhận (To):", value=draft['to'])
-            with c2: st.text_input("CC:", value="P. Kỹ thuật & Lãnh đạo", disabled=True)
-            
-            subject_input = st.text_input("Tiêu đề (Subject):", value=draft['subject'])
-            body_input = st.text_area("Nội dung Email (Markdown):", value=draft['body'], height=450)
-            
-            st.markdown("---")
-            if st.button("📨 TẠO BẢN NHÁP TRÊN GMAIL MASTERS"):
-                with st.spinner("Đang kết nối Gmail API..."):
-                    try:
-                        res = gmail.create_draft(recipient_input, subject_input, body_input, cc=CC_LIST)
-                        st.success(f"🎉 Đã gửi bản nháp vào Hòm thư Nháp thành công!")
-                        st.balloons()
-                        st.code(f"Draft ID: {res['id']}", language="text")
-                    except Exception as e:
-                        st.error(f"❌ Lỗi: {e}")
-            st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("##### 📝 Xem trước & soạn email")
+    if draft:
+        c1, c2 = st.columns([2, 1])
+        recipient_input = c1.text_input("Người nhận (To)", value=draft["to"])
+        c2.text_input("CC", value=f"Lãnh đạo & P.KT ({len(CC_LIST.split(','))} địa chỉ)", disabled=True,
+                      help=CC_LIST)
+        subject_input = st.text_input("Tiêu đề", value=draft["subject"])
+        body_input = st.text_area("Nội dung email (Markdown)", value=draft["body"], height=450)
+        if st.button("📨 Tạo bản nháp trên Gmail", type="primary", use_container_width=True):
+            with st.spinner("Đang kết nối Gmail…"):
+                try:
+                    res = gmail.create_draft(recipient_input, subject_input, body_input, cc=CC_LIST)
+                    ui.callout("🟢 Đã tạo bản nháp trong hộp thư Nháp của Gmail – mở Gmail xem lại rồi gửi.", "green")
+                    st.caption(f"Mã bản nháp: {res['id']}")
+                except Exception as e:
+                    st.error(f"❌ Lỗi: {e}")
     else:
-        st.markdown("<div style='text-align: center; color: #64748b; font-weight: 500; padding: 150px 20px;'>Hệ thống đang sẵn sàng... <br>Nhấn 'Quét lịch dự án' ở cột bên trái để AI bắt đầu soạn thảo.</div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align:center; color:#64748b; padding:110px 20px;'>Chưa có email để soạn.<br>"
+                    "Quét lịch rồi chọn một sự kiện có mã mốc ở cột bên trái.</div>", unsafe_allow_html=True)
 
-st.markdown("<div class='footer'>TEXO Engineering Department | Version 2.0 (Standalone) | Hoàng Đức Vũ</div>", unsafe_allow_html=True)
+# Ô tổng hợp (vẽ sau cùng để phản ánh sự kiện vừa chọn, hiển thị ở đầu trang)
+with kpi_box:
+    n_tag = sum(1 for e in events if find_tag(e.get("summary", "")))
+    scanned = "events" in st.session_state
+    k = st.columns(3)
+    ui.kpi(k[0], len(events) if scanned else "–", "Sự kiện hôm nay", "trên lịch TEXO")
+    ui.kpi(k[1], n_tag if scanned else "–", "Có mã mốc", "soạn được email", "green" if n_tag else "blue")
+    ui.kpi(k[2], draft["tag"] if draft else "–", "Mốc đang soạn",
+           draft["title"] if draft else "chưa chọn sự kiện", "orange" if draft else "grey")
